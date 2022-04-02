@@ -1,0 +1,3 @@
+class OrginDaliyDate():
+    ErrCode:str
+    
