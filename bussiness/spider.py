@@ -11,6 +11,7 @@ from commonbaby.mslog import MsFileLogConfig,MsLogLevels,MsLogManager, mslogleve
 MsLogManager.static_initial(
     dft_lvl=MsLogLevels.INFO,msficfg=MsFileLogConfig(fi_dir=r"./_log")
 )
+import config
 
 from model.FundResult import FundResult
 
@@ -59,6 +60,7 @@ class Spider():
                 for item in json_data["datas"]:
                     single_data= str(item).split(',')
                     try:
+                        f_data.scale=self.__get_scale__(single_data[0],'2020',True)
                         temp_data= self.__get_single__(single_data[0])
                         f_data= self.__compute__(temp_data)
                         f_data.m_experience=self.__get_m_experience__(single_data[0],f_data)
@@ -122,10 +124,22 @@ class Spider():
             total+=(item-result.average)*(item-result.average)
         result.variance=total/f_len   
         return result
-    def __get_scale__(self,code:str):
+    #is_begin 是否以首月的数据为基金规模
+    def __get_scale__(self,code:str,year:str,is_end:bool=False):
+        """spider scale
+
+        Parameters
+        ----------
+        code : str
+            fund code
+        year : str
+            year
+        is_end : bool, optional
+            _description_, by default False
+        """
         result=None
         try:
-            url=f"http://fundf10.eastmoney.com/jjjz_{code}.html"
+            url=f"http://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=zcfzb&code={code}&showtype=1"
             headers = {
     'Host': 'fundf10.eastmoney.com',
     'Proxy-Connection': 'keep-alive',
@@ -140,11 +154,23 @@ class Spider():
             ha=HttpAccess(0,)
             res=ha.get(url=url,headers=headers)
             i_soup=BeautifulSoup(res.text,'lxml')
-            script_content=str(i_soup.select('label')[-3].select_one('span'))
-            paire=re.compile(r'(  .*?)元',  re.MULTILINE|re.IGNORECASE)
-            obj= paire.findall(script_content)
-            if len(obj)>0 and len(str(obj[0]))>0:
-                result=str(obj[0]).replace(' ','').replace('亿','')
+            year_col=0
+            count=0
+            for th in i_soup.select('table')[0].select('th'):
+                if th.get_text().__contains__(year):
+                    pass
+                count+=1
+            for tr in i_soup.select('table')[1].select('tr'):
+                td=tr.select('td')
+                if td==None or len(td)==0:
+                    continue
+                td_year=td[0].get_text()
+                if not str(td_year).__contains__(year):
+                    continue
+                if is_end:
+                    result=float(td[-1].get_text())
+                    break
+                result=float(td[-1].get_text())
         except Exception as ex:
             self._logger.error(f"get cguess error {ex}")
             if str(result).__contains__('x'):
@@ -281,14 +307,22 @@ class Spider():
             self._logger.error(f'{ex}')
         return result
     def get_scale_analysis_data(self):
+        """spider scale and year increase
+
+        Returns
+        -------
+        list
+            return x and y list
+        """
         x=[]
         y=[]
-        for code in self.get_code_list(100):
-            x1=self.__get_scale__(code)
+        for code in self.get_code_list(config.Scale_Analysis_Size):
+            x1=self.__get_scale__(code,str(config.Scale_Analysis_year-1),True)
+            if x1==None:continue
             if x.__contains__(float(x1)):
                 continue
             x.append(float(x1))
-            y1=self.__get_year_increase(code,datetime(2021,1,1),datetime(2021,12,31))
+            y1=self.__get_year_increase(code,datetime(config.Scale_Analysis_year,1,1),datetime(config.Scale_Analysis_year,12,31))
             y.append(y1)
         result=[]
         result.append(x)
